@@ -218,7 +218,7 @@ func Start() {
 
 func Pause() {
 	if !initialized {
-		panic(initialized)
+		panic("call Start() first")
 	}
 
 	if !running {
@@ -236,7 +236,7 @@ func Pause() {
 
 func End() {
 	if !initialized {
-		panic(initialized)
+		panic("call Start() first")
 	}
 
 	Pause()
