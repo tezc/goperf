@@ -10,24 +10,24 @@ import (
 )
 
 const (
-	L1D  = unix.PERF_COUNT_HW_CACHE_L1D
-	L1I  = unix.PERF_COUNT_HW_CACHE_L1I
-	LL   = unix.PERF_COUNT_HW_CACHE_LL
-	DTLB = unix.PERF_COUNT_HW_CACHE_DTLB
-	ITLB = unix.PERF_COUNT_HW_CACHE_ITLB
-	BPU  = unix.PERF_COUNT_HW_CACHE_BPU
-	NODE = unix.PERF_COUNT_HW_CACHE_NODE
+	pL1D  = unix.PERF_COUNT_HW_CACHE_L1D
+	pL1I  = unix.PERF_COUNT_HW_CACHE_L1I
+	pLL   = unix.PERF_COUNT_HW_CACHE_LL
+	pDTLB = unix.PERF_COUNT_HW_CACHE_DTLB
+	pITLB = unix.PERF_COUNT_HW_CACHE_ITLB
+	pBPU  = unix.PERF_COUNT_HW_CACHE_BPU
+	pNODE = unix.PERF_COUNT_HW_CACHE_NODE
 )
 
 const (
-	READ     = unix.PERF_COUNT_HW_CACHE_OP_READ
-	WRITE    = unix.PERF_COUNT_HW_CACHE_OP_WRITE
-	PREFETCH = unix.PERF_COUNT_HW_CACHE_OP_PREFETCH
+	pREAD     = unix.PERF_COUNT_HW_CACHE_OP_READ
+	pWRITE    = unix.PERF_COUNT_HW_CACHE_OP_WRITE
+	pPREFETCH = unix.PERF_COUNT_HW_CACHE_OP_PREFETCH
 )
 
 const (
-	ACCESS = unix.PERF_COUNT_HW_CACHE_RESULT_ACCESS
-	MISS   = unix.PERF_COUNT_HW_CACHE_RESULT_MISS
+	pACCESS = unix.PERF_COUNT_HW_CACHE_RESULT_ACCESS
+	pMISS   = unix.PERF_COUNT_HW_CACHE_RESULT_MISS
 )
 
 type counter struct {
@@ -36,6 +36,20 @@ type counter struct {
 	Config  uint64
 	Enabled bool
 }
+
+var initialized bool
+var running bool
+var total time.Duration
+var start time.Time
+
+type item struct {
+	event  counter
+	value  float64
+	active float64
+	fd     int
+}
+
+var items [len(counters)]item
 
 func cache(cache uint32, op uint32, result uint32) uint64 {
 	return uint64(cache | (op << 16) | (result << 16))
@@ -61,63 +75,49 @@ var counters = [...]counter{
 	{"stalled-cycles-frontend", unix.PERF_TYPE_HARDWARE, unix.PERF_COUNT_HW_STALLED_CYCLES_FRONTEND, false},
 	{"stalled-cycles-backend", unix.PERF_TYPE_HARDWARE, unix.PERF_COUNT_HW_STALLED_CYCLES_BACKEND, false},
 	{"ref-cpu-cycles", unix.PERF_TYPE_HARDWARE, unix.PERF_COUNT_HW_REF_CPU_CYCLES, false},
-	{"L1D-read-access", unix.PERF_TYPE_HW_CACHE, cache(L1D, READ, ACCESS), false},
-	{"L1D-read-miss", unix.PERF_TYPE_HW_CACHE, cache(L1D, READ, MISS), true},
-	{"L1D-write-access", unix.PERF_TYPE_HW_CACHE, cache(L1D, WRITE, ACCESS), false},
-	{"L1D-write-miss", unix.PERF_TYPE_HW_CACHE, cache(L1D, WRITE, MISS), false},
-	{"L1D-prefetch-access", unix.PERF_TYPE_HW_CACHE, cache(L1D, PREFETCH, ACCESS), false},
-	{"L1D-prefetch-miss", unix.PERF_TYPE_HW_CACHE, cache(L1D, PREFETCH, MISS), false},
-	{"L1I-read-access", unix.PERF_TYPE_HW_CACHE, cache(L1I, READ, ACCESS), false},
-	{"L1I-read-miss", unix.PERF_TYPE_HW_CACHE, cache(L1I, READ, MISS), true},
-	{"L1I-write-access", unix.PERF_TYPE_HW_CACHE, cache(L1I, WRITE, ACCESS), false},
-	{"L1I-write-miss", unix.PERF_TYPE_HW_CACHE, cache(L1I, WRITE, MISS), false},
-	{"L1I-prefetch-access", unix.PERF_TYPE_HW_CACHE, cache(L1I, PREFETCH, ACCESS), false},
-	{"L1I-prefetch-miss", unix.PERF_TYPE_HW_CACHE, cache(L1I, PREFETCH, MISS), false},
-	{"LL-read-access", unix.PERF_TYPE_HW_CACHE, cache(LL, READ, ACCESS), false},
-	{"LL-read-miss", unix.PERF_TYPE_HW_CACHE, cache(LL, READ, MISS), false},
-	{"LL-write-access", unix.PERF_TYPE_HW_CACHE, cache(LL, WRITE, ACCESS), false},
-	{"LL-write-miss", unix.PERF_TYPE_HW_CACHE, cache(LL, WRITE, MISS), false},
-	{"LL-prefetch-access", unix.PERF_TYPE_HW_CACHE, cache(LL, PREFETCH, ACCESS), false},
-	{"LL-prefetch-miss", unix.PERF_TYPE_HW_CACHE, cache(LL, PREFETCH, MISS), false},
-	{"DTLB-read-access", unix.PERF_TYPE_HW_CACHE, cache(DTLB, READ, ACCESS), false},
-	{"DTLB-read-miss", unix.PERF_TYPE_HW_CACHE, cache(DTLB, READ, MISS), false},
-	{"DTLB-write-access", unix.PERF_TYPE_HW_CACHE, cache(DTLB, WRITE, ACCESS), false},
-	{"DTLB-write-miss", unix.PERF_TYPE_HW_CACHE, cache(DTLB, WRITE, MISS), false},
-	{"DTLB-prefetch-access", unix.PERF_TYPE_HW_CACHE, cache(DTLB, PREFETCH, ACCESS), false},
-	{"DTLB-prefetch-miss", unix.PERF_TYPE_HW_CACHE, cache(DTLB, PREFETCH, MISS), false},
-	{"ITLB-read-access", unix.PERF_TYPE_HW_CACHE, cache(ITLB, READ, ACCESS), false},
-	{"ITLB-read-miss", unix.PERF_TYPE_HW_CACHE, cache(ITLB, READ, MISS), false},
-	{"ITLB-write-access", unix.PERF_TYPE_HW_CACHE, cache(ITLB, WRITE, ACCESS), false},
-	{"ITLB-write-miss", unix.PERF_TYPE_HW_CACHE, cache(ITLB, WRITE, MISS), false},
-	{"ITLB-prefetch-access", unix.PERF_TYPE_HW_CACHE, cache(ITLB, PREFETCH, ACCESS), false},
-	{"ITLB-prefetch-miss", unix.PERF_TYPE_HW_CACHE, cache(ITLB, PREFETCH, MISS), false},
-	{"BPU-read-access", unix.PERF_TYPE_HW_CACHE, cache(BPU, READ, ACCESS), false},
-	{"BPU-read-miss", unix.PERF_TYPE_HW_CACHE, cache(BPU, READ, MISS), false},
-	{"BPU-write-access", unix.PERF_TYPE_HW_CACHE, cache(BPU, WRITE, ACCESS), false},
-	{"BPU-write-miss", unix.PERF_TYPE_HW_CACHE, cache(BPU, WRITE, MISS), false},
-	{"BPU-prefetch-access", unix.PERF_TYPE_HW_CACHE, cache(BPU, PREFETCH, ACCESS), false},
-	{"BPU-prefetch-miss", unix.PERF_TYPE_HW_CACHE, cache(BPU, PREFETCH, MISS), false},
-	{"NODE-read-access", unix.PERF_TYPE_HW_CACHE, cache(NODE, READ, ACCESS), false},
-	{"NODE-read-miss", unix.PERF_TYPE_HW_CACHE, cache(NODE, READ, MISS), false},
-	{"NODE-write-access", unix.PERF_TYPE_HW_CACHE, cache(NODE, WRITE, ACCESS), false},
-	{"NODE-write-miss", unix.PERF_TYPE_HW_CACHE, cache(NODE, WRITE, MISS), false},
-	{"NODE-prefetch-access", unix.PERF_TYPE_HW_CACHE, cache(NODE, PREFETCH, ACCESS), false},
-	{"NODE-prefetch-miss", unix.PERF_TYPE_HW_CACHE, cache(NODE, PREFETCH, MISS), false},
+	{"L1D-read-access", unix.PERF_TYPE_HW_CACHE, cache(pL1D, pREAD, pACCESS), false},
+	{"L1D-read-miss", unix.PERF_TYPE_HW_CACHE, cache(pL1D, pREAD, pMISS), true},
+	{"L1D-write-access", unix.PERF_TYPE_HW_CACHE, cache(pL1D, pWRITE, pACCESS), false},
+	{"L1D-write-miss", unix.PERF_TYPE_HW_CACHE, cache(pL1D, pWRITE, pMISS), false},
+	{"L1D-prefetch-access", unix.PERF_TYPE_HW_CACHE, cache(pL1D, pPREFETCH, pACCESS), false},
+	{"L1D-prefetch-miss", unix.PERF_TYPE_HW_CACHE, cache(pL1D, pPREFETCH, pMISS), false},
+	{"L1I-read-access", unix.PERF_TYPE_HW_CACHE, cache(pL1I, pREAD, pACCESS), false},
+	{"L1I-read-miss", unix.PERF_TYPE_HW_CACHE, cache(pL1I, pREAD, pMISS), true},
+	{"L1I-write-access", unix.PERF_TYPE_HW_CACHE, cache(pL1I, pWRITE, pACCESS), false},
+	{"L1I-write-miss", unix.PERF_TYPE_HW_CACHE, cache(pL1I, pWRITE, pMISS), false},
+	{"L1I-prefetch-access", unix.PERF_TYPE_HW_CACHE, cache(pL1I, pPREFETCH, pACCESS), false},
+	{"L1I-prefetch-miss", unix.PERF_TYPE_HW_CACHE, cache(pL1I, pPREFETCH, pMISS), false},
+	{"LL-read-access", unix.PERF_TYPE_HW_CACHE, cache(pLL, pREAD, pACCESS), false},
+	{"LL-read-miss", unix.PERF_TYPE_HW_CACHE, cache(pLL, pREAD, pMISS), false},
+	{"LL-write-access", unix.PERF_TYPE_HW_CACHE, cache(pLL, pWRITE, pACCESS), false},
+	{"LL-write-miss", unix.PERF_TYPE_HW_CACHE, cache(pLL, pWRITE, pMISS), false},
+	{"LL-prefetch-access", unix.PERF_TYPE_HW_CACHE, cache(pLL, pPREFETCH, pACCESS), false},
+	{"LL-prefetch-miss", unix.PERF_TYPE_HW_CACHE, cache(pLL, pPREFETCH, pMISS), false},
+	{"DTLB-read-access", unix.PERF_TYPE_HW_CACHE, cache(pDTLB, pREAD, pACCESS), false},
+	{"DTLB-read-miss", unix.PERF_TYPE_HW_CACHE, cache(pDTLB, pREAD, pMISS), false},
+	{"DTLB-write-access", unix.PERF_TYPE_HW_CACHE, cache(pDTLB, pWRITE, pACCESS), false},
+	{"DTLB-write-miss", unix.PERF_TYPE_HW_CACHE, cache(pDTLB, pWRITE, pMISS), false},
+	{"DTLB-prefetch-access", unix.PERF_TYPE_HW_CACHE, cache(pDTLB, pPREFETCH, pACCESS), false},
+	{"DTLB-prefetch-miss", unix.PERF_TYPE_HW_CACHE, cache(pDTLB, pPREFETCH, pMISS), false},
+	{"ITLB-read-access", unix.PERF_TYPE_HW_CACHE, cache(pITLB, pREAD, pACCESS), false},
+	{"ITLB-read-miss", unix.PERF_TYPE_HW_CACHE, cache(pITLB, pREAD, pMISS), false},
+	{"ITLB-write-access", unix.PERF_TYPE_HW_CACHE, cache(pITLB, pWRITE, pACCESS), false},
+	{"ITLB-write-miss", unix.PERF_TYPE_HW_CACHE, cache(pITLB, pWRITE, pMISS), false},
+	{"ITLB-prefetch-access", unix.PERF_TYPE_HW_CACHE, cache(pITLB, pPREFETCH, pACCESS), false},
+	{"ITLB-prefetch-miss", unix.PERF_TYPE_HW_CACHE, cache(pITLB, pPREFETCH, pMISS), false},
+	{"BPU-read-access", unix.PERF_TYPE_HW_CACHE, cache(pBPU, pREAD, pACCESS), false},
+	{"BPU-read-miss", unix.PERF_TYPE_HW_CACHE, cache(pBPU, pREAD, pMISS), false},
+	{"BPU-write-access", unix.PERF_TYPE_HW_CACHE, cache(pBPU, pWRITE, pACCESS), false},
+	{"BPU-write-miss", unix.PERF_TYPE_HW_CACHE, cache(pBPU, pWRITE, pMISS), false},
+	{"BPU-prefetch-access", unix.PERF_TYPE_HW_CACHE, cache(pBPU, pPREFETCH, pACCESS), false},
+	{"BPU-prefetch-miss", unix.PERF_TYPE_HW_CACHE, cache(pBPU, pPREFETCH, pMISS), false},
+	{"NODE-read-access", unix.PERF_TYPE_HW_CACHE, cache(pNODE, pREAD, pACCESS), false},
+	{"NODE-read-miss", unix.PERF_TYPE_HW_CACHE, cache(pNODE, pREAD, pMISS), false},
+	{"NODE-write-access", unix.PERF_TYPE_HW_CACHE, cache(pNODE, pWRITE, pACCESS), false},
+	{"NODE-write-miss", unix.PERF_TYPE_HW_CACHE, cache(pNODE, pWRITE, pMISS), false},
+	{"NODE-prefetch-access", unix.PERF_TYPE_HW_CACHE, cache(pNODE, pPREFETCH, pACCESS), false},
+	{"NODE-prefetch-miss", unix.PERF_TYPE_HW_CACHE, cache(pNODE, pPREFETCH, pMISS), false},
 }
-
-var initialized bool
-var running bool
-var total time.Duration
-var start time.Time
-
-type item struct {
-	event  counter
-	value  float64
-	active float64
-	fd     int
-}
-
-var items [len(counters)]item
 
 func clear() {
 	total = 0
@@ -164,7 +164,6 @@ func set() {
 
 		items[i].fd = fd
 	}
-
 }
 
 func Enable(counter string) {
@@ -175,8 +174,7 @@ func Enable(counter string) {
 		}
 	}
 
-	str := fmt.Errorf("unknown counter : %s", counter)
-	panic(str)
+	panic(fmt.Errorf("unknown counter : %s", counter))
 }
 
 func Disable(counter string) {
@@ -187,8 +185,7 @@ func Disable(counter string) {
 		}
 	}
 
-	str := fmt.Errorf("unknown counter : %s", counter)
-	panic(str)
+	panic(fmt.Errorf("unknown counter : %s", counter))
 }
 
 func Start() {
@@ -200,8 +197,7 @@ func Start() {
 
 	err := unix.Prctl(unix.PR_TASK_PERF_EVENTS_ENABLE, 0, 0, 0, 0)
 	if err != nil {
-		str := fmt.Errorf("prctl : %v", err)
-		panic(str)
+		panic(fmt.Errorf("prctl : %v", err))
 	}
 
 	start = time.Now()
@@ -219,8 +215,7 @@ func Pause() {
 
 	err := unix.Prctl(unix.PR_TASK_PERF_EVENTS_DISABLE, 0, 0, 0, 0)
 	if err != nil {
-		str := fmt.Errorf("prctl : %v", err)
-		panic(str)
+		panic(fmt.Errorf("prctl : %v", err))
 	}
 
 	total = total + time.Now().Sub(start)
@@ -243,13 +238,13 @@ func End() {
 
 	p := message.NewPrinter(language.English)
 
-	_, _ = p.Printf("\n| %-25s | %-18s | %s  \n", "Event", "Value", "Measurement time")
-	_, _ = p.Printf("---------------------------------------------------------------\n")
-	_, _ = p.Printf("| %-25s | %-18.2f | %s  \n", "time (seconds)", float64(total)/1e9, "(100,00%)")
+	p.Printf("\n| %-25s | %-18s | %s  \n", "Event", "Value", "Measurement time")
+	p.Printf("---------------------------------------------------------------\n")
+	p.Printf("| %-25s | %-18.2f | %s  \n", "time (seconds)", float64(total)/1e9, "(100,00%)")
 
 	for i := range items {
 		if counters[i].Enabled {
-			_, _ = p.Printf("| %-25s | %-18.2f | (%.2f%%)  \n", items[i].event.Name,
+			p.Printf("| %-25s | %-18.2f | (%.2f%%)  \n", items[i].event.Name,
 				items[i].value, items[i].active*100)
 		}
 	}
@@ -258,6 +253,7 @@ func End() {
 }
 
 func readCounters() {
+
 	var f readFormat
 
 	for i := range items {
@@ -270,13 +266,11 @@ func readCounters() {
 
 		rd, err := unix.Read(items[i].fd, p)
 		if err != nil {
-			str := fmt.Errorf("failed to read counters : %v", err)
-			panic(str)
+			panic(fmt.Errorf("failed to read counters : %v", err))
 		}
 
 		if rd != int(unsafe.Sizeof(f)) {
-			str := fmt.Errorf("read less than expected")
-			panic(str)
+			panic(fmt.Errorf("read less than expected"))
 		}
 
 		f = *((*readFormat)(unsafe.Pointer(&p[0])))
