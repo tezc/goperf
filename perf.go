@@ -49,13 +49,13 @@ type item struct {
 	fd     int
 }
 
-var items [len(counters)]item
+var items [len(Counters)]item
 
 func cache(cache uint32, op uint32, result uint32) uint64 {
 	return uint64(cache | (op << 16) | (result << 16))
 }
 
-var counters = [...]counter{
+var Counters = [...]counter{
 	{"cpu-clock", unix.PERF_TYPE_SOFTWARE, unix.PERF_COUNT_SW_CPU_CLOCK, true},
 	{"task-clock", unix.PERF_TYPE_SOFTWARE, unix.PERF_COUNT_SW_TASK_CLOCK, true},
 	{"page-faults", unix.PERF_TYPE_SOFTWARE, unix.PERF_COUNT_SW_PAGE_FAULTS, true},
@@ -125,7 +125,7 @@ func clear() {
 	initialized = false
 
 	for i := range items {
-		items[i].event = counters[i]
+		items[i].event = Counters[i]
 		items[i].active = 0
 		items[i].value = 0
 		items[i].fd = -1
@@ -144,7 +144,7 @@ func set() {
 		unix.PERF_FORMAT_TOTAL_TIME_ENABLED
 
 	for i := range items {
-		if !counters[i].Enabled {
+		if !Counters[i].Enabled {
 			continue
 		}
 
@@ -166,10 +166,17 @@ func set() {
 	}
 }
 
+// Enable a counter by its name, check Counters array for the list
+// Hardware counters are limited on your CPU (~7 these days).
+// Some performance counters cannot be enabled at the same time.
+// Unsupported counters (either by OS or your CPU) will fail.
+// Some counters can be scheduled at the same PMU on the CPU, so
+// they will be multiplexed. You can check measurement time in the output
+// to see this is the case.
 func Enable(counter string) {
-	for i := range counters {
-		if counters[i].Name == counter {
-			counters[i].Enabled = true
+	for i := range Counters {
+		if Counters[i].Name == counter {
+			Counters[i].Enabled = true
 			return
 		}
 	}
@@ -177,10 +184,11 @@ func Enable(counter string) {
 	panic(fmt.Errorf("unknown counter : %s", counter))
 }
 
+// Disable a counter by its name, check Counters array for the list
 func Disable(counter string) {
-	for i := range counters {
-		if counters[i].Name == counter {
-			counters[i].Enabled = false
+	for i := range Counters {
+		if Counters[i].Name == counter {
+			Counters[i].Enabled = false
 			return
 		}
 	}
@@ -189,6 +197,10 @@ func Disable(counter string) {
 }
 
 func Start() {
+	if running {
+		panic("Already started")
+	}
+
 	if !initialized {
 		clear()
 		set()
@@ -231,7 +243,7 @@ func End() {
 	readCounters()
 
 	for i := range items {
-		if counters[i].Enabled {
+		if Counters[i].Enabled {
 			_ = unix.Close(items[i].fd)
 		}
 	}
@@ -243,7 +255,7 @@ func End() {
 	p.Printf("| %-25s | %-18.2f | %s  \n", "time (seconds)", float64(total)/1e9, "(100,00%)")
 
 	for i := range items {
-		if counters[i].Enabled {
+		if Counters[i].Enabled {
 			p.Printf("| %-25s | %-18.2f | (%.2f%%)  \n", items[i].event.Name,
 				items[i].value, items[i].active*100)
 		}
@@ -260,7 +272,7 @@ func readCounters() {
 		n := 1.0
 		p := make([]byte, 64)
 
-		if !counters[i].Enabled {
+		if !Counters[i].Enabled {
 			continue
 		}
 
