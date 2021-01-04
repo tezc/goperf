@@ -5,6 +5,7 @@ import (
 	"golang.org/x/sys/unix"
 	"golang.org/x/text/language"
 	"golang.org/x/text/message"
+	"strings"
 	"time"
 	"unsafe"
 )
@@ -175,7 +176,7 @@ func set() {
 // to see this is the case.
 func Enable(counter string) {
 	for i := range Counters {
-		if Counters[i].Name == counter {
+		if strings.EqualFold(Counters[i].Name, counter) {
 			Counters[i].Enabled = true
 			return
 		}
@@ -187,7 +188,7 @@ func Enable(counter string) {
 // Disable a counter by its name, check Counters array for the list
 func Disable(counter string) {
 	for i := range Counters {
-		if Counters[i].Name == counter {
+		if strings.EqualFold(Counters[i].Name, counter) {
 			Counters[i].Enabled = false
 			return
 		}
