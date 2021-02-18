@@ -8,7 +8,7 @@ some piece of code from your project and isolate it for performance counters.
 
 ## Notes
 - CPUs have limited PMU registers. So, performance counters can be activated at the  
-same time are limited. (say 7 these days).  
+same time are limited.  
 - Some performance counters can be scheduled on specific PMU only. So, combination of  
 some performance counters may not work or they will be multiplexed. 
 - Check out "Measurement Time" section in the report to see if it's multiplexed.  
@@ -16,8 +16,17 @@ some performance counters may not work or they will be multiplexed.
 - Not all counters are supported by Linux or your CPU.
 - If you are surprised that some counters does not work, search scheduling  
   algorithm of performance counters online.
+- This tool will measure all threads of the process, including gc threads.
 
-Usage :
+## Config
+To allow recording kernel events, you may need to run :
+
+```
+sudo sh -c 'echo 1 >/proc/sys/kernel/perf_event_paranoid'
+```
+
+## Usage :
+
 
 ```go
 package main
