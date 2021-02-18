@@ -17,6 +17,7 @@ some performance counters may not work or they will be multiplexed.
 - If you are surprised that some counters does not work, search scheduling  
   algorithm of performance counters online.
 - This tool will measure all threads of the process, including gc threads.
+- This tool is direct translation from C version : https://github.com/tezc/sc/tree/master/perf
 
 ## Config
 To allow recording kernel events, you may need to run :
