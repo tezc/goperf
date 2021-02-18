@@ -7,17 +7,10 @@ Normally, you use 'perf' itself but it's not always possible to extract
 some piece of code from your project and isolate it for performance counters.
 
 ## Notes
-- CPUs have limited PMU registers. So, performance counters can be activated at the  
-same time are limited.  
-- Some performance counters can be scheduled on specific PMU only. So, combination of  
-some performance counters may not work or they will be multiplexed. 
-- Check out "Measurement Time" section in the report to see if it's multiplexed.  
-  (less than %100)
-- Not all counters are supported by Linux or your CPU.
-- If you are surprised that some counters does not work, search scheduling  
-  algorithm of performance counters online.
+- CPUs have limited PMU registers. So, performance counters can be activated at the same time are limited. Some performance counters can be scheduled on specific PMU only. So, combination of some performance counters may not work or they might be multiplexed. Check out "Measurement Time" section in the report to see if it's multiplexed. (less than %100) . Also, not all counters are supported by Linux or your CPU. If you are surprised that some counters does not work, search scheduling algorithm of performance counters online.
 - This tool will measure all threads of the process, including gc threads.
-- This tool is direct translation from C version : https://github.com/tezc/sc/tree/master/perf
+- This tool is direct translation from C version, just for experimental purposes. : https://github.com/tezc/sc/tree/master/perf
+
 
 ## Config
 To allow recording kernel events, you may need to run :
